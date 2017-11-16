@@ -5,6 +5,7 @@ from geometry_msgs.msg import PoseStamped
 from styx_msgs.msg import Lane, Waypoint
 
 import math
+import numpy as np
 
 '''
 This node will publish waypoints from the car's current position to some `x` distance ahead.
@@ -37,15 +38,47 @@ class WaypointUpdater(object):
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
 
         # TODO: Add other member variables you need below
-
+	self.cur_x = 0
+	self.cur_y = 0
         rospy.spin()
 
     def pose_cb(self, msg):
         # TODO: Implement
+	# waypoints[0].twist.twist.linear.x = 5
+	rospy.logerr('pose')
+	self.cur_x = msg.pose.position.x
+	self.cur_y = msg.pose.position.y
+	#rospy.logerr(msg.pose.position.x)
+	#rospy.logerr(msg.pose.position.y)
+	#rospy.logerr(msg.pose.orientation.x)
+	#rospy.logerr(msg.pose.orientation.y)
+	#rospy.logerr(msg.pose.orientation.z)
         pass
 
     def waypoints_cb(self, waypoints):
         # TODO: Implement
+	pos_x_list = np.asarray([waypoint.pose.pose.position.x for waypoint in waypoints.waypoints])
+	pos_y_list = np.asarray([waypoint.pose.pose.position.y for waypoint in waypoints.waypoints])
+
+	pts = zip(pos_x_list-self.cur_x, pos_y_list-self.cur_y)
+	pts_arr = np.asarray(pts)
+	d2 = np.sum(pts_arr**2, axis=1)
+	rospy.logerr(d2)
+	ind_closest = np.argmin(d2)
+	rospy.logerr("CLOSEST")
+	rospy.logerr(ind_closest)
+	rospy.logerr("Length")
+	rospy.logerr(len(pos_x_list))
+	final_waypoints = waypoints.waypoints[ind_closest:(ind_closest+100)]
+
+	waypoints.waypoints = final_waypoints
+	rospy.logerr('printing waypoints')
+	rospy.logerr(len(waypoints.waypoints))
+	for waypoint in waypoints.waypoints:
+	  rospy.logerr('waypoint')
+	  rospy.logerr(waypoint.pose.pose.position.x)
+          rospy.logerr(waypoint.pose.pose.position.y)
+	self.final_waypoints_pub.publish(waypoints)
         pass
 
     def traffic_cb(self, msg):

@@ -2,8 +2,9 @@
 
 import rospy
 from std_msgs.msg import Bool
+from styx_msgs.msg import Lane, Waypoint
 from dbw_mkz_msgs.msg import ThrottleCmd, SteeringCmd, BrakeCmd, SteeringReport
-from geometry_msgs.msg import TwistStamped
+from geometry_msgs.msg import TwistStamped, PoseStamped
 import math
 
 from twist_controller import Controller
@@ -53,12 +54,51 @@ class DBWNode(object):
         self.brake_pub = rospy.Publisher('/vehicle/brake_cmd',
                                          BrakeCmd, queue_size=1)
 
+	rospy.Subscriber('/vehicle/dbw_enabled', Bool, self.dbw_enabled_cb)
+	self.dbw_enabled = False
+	self.target_angle = 0.0
+	self.target_speed = 0.0
+	self.cur_angle = 0.0
+	self.cur_speed = 0.0
         # TODO: Create `TwistController` object
         # self.controller = TwistController(<Arguments you wish to provide>)
+	self.controller = Controller()
 
         # TODO: Subscribe to all the topics you need to
+	rospy.Subscriber('/current_velocity', TwistStamped, self.vel_cb)
+	rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
+	#rospy.Subscriber('/final_waypoints', Lane, self.final_waypoints_cb)
+        rospy.Subscriber('/twist_cmd', TwistStamped, self.twist_cb)
+	self.loop()
 
-        self.loop()
+    def vel_cb(self, msg):
+	self.cur_speed = math.sqrt(msg.twist.linear.x*msg.twist.linear.x+
+		msg.twist.linear.y*msg.twist.linear.y)
+	self.cur_angle = msg.twist.angular.z
+	#rospy.logerr('vel orientaiton')
+	#self.cur_angle = math.atan2(msg.twist.linear.y, msg.twist.linear.x)
+	rospy.logerr('current speed')
+	rospy.logerr(self.cur_speed)
+	#rospy.logerr('target speed')
+	#rospy.logerr(self.target_speed)
+	rospy.logerr('current ang')
+	rospy.logerr(self.cur_angle)
+
+    def pose_cb(self, msg):
+	#self.cur_angle = msg.pose.orientation.z
+	#self.cur_angle = msg.twist.angular.z
+	rospy.logerr('pose')
+	#rospy.logerr(self.cur_angle)
+	#rospy.logerr('target ang vel')
+	#rospy.logerr(self.target_angle)
+
+    def twist_cb(self, msg):
+	self.target_speed = msg.twist.linear.x
+	self.target_angle = msg.twist.angular.z
+	rospy.logerr('target speed')
+	rospy.logerr(self.target_speed)
+	rospy.logerr('target ang')
+	rospy.logerr(self.target_angle)
 
     def loop(self):
         rate = rospy.Rate(50) # 50Hz
@@ -72,7 +112,17 @@ class DBWNode(object):
             #                                                     <any other argument you need>)
             # if <dbw is enabled>:
             #   self.publish(throttle, brake, steer)
+	    throttle, brake, steering = self.controller.control(self.cur_speed, self.target_speed, self.cur_angle, self.target_angle)
+	    rospy.logerr(throttle)
+	    rospy.logerr('steering')
+	    rospy.logerr(steering)
+	    rospy.logerr(self.dbw_enabled)
+	    #if self.dbw_enabled:
+	    self.publish(throttle, brake, steering)
             rate.sleep()
+
+    def dbw_enabled_cb(self, msg):
+        self.dbw_enabled = msg.data
 
     def publish(self, throttle, brake, steer):
         tcmd = ThrottleCmd()
@@ -94,4 +144,7 @@ class DBWNode(object):
 
 
 if __name__ == '__main__':
-    DBWNode()
+    try:
+        DBWNode()
+    except rospy.ROSInterruptException:
+	rospy.logerr('Could not start DBW node.')
