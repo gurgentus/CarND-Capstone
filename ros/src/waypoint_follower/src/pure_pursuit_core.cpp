@@ -266,7 +266,7 @@ geometry_msgs::Twist PurePursuit::calcTwist(double curvature, double cmd_velocit
   {
     twist.angular.z = prev_angular_velocity;
   }
-
+  //ROS_ERROR_STREAM("Following: " << following_flag << std::endl);
   prev_angular_velocity = twist.angular.z;
   return twist;
 }

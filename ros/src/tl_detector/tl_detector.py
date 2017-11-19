@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import rospy
+import numpy as np
 from std_msgs.msg import Int32
 from geometry_msgs.msg import PoseStamped, Pose
 from styx_msgs.msg import TrafficLightArray, TrafficLight
@@ -23,8 +24,8 @@ class TLDetector(object):
         self.lights = []
 
         sub1 = rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
-        sub2 = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
-
+        #sub2 = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
+        sub2 = rospy.Subscriber('/final_waypoints', Lane, self.waypoints_cb)
         '''
         /vehicle/traffic_lights provides you with the location of the traffic light in 3D map space and
         helps you acquire an accurate ground truth data source for the traffic light
@@ -85,6 +86,7 @@ class TLDetector(object):
             self.last_state = self.state
             light_wp = light_wp if state == TrafficLight.RED else -1
             self.last_wp = light_wp
+	    #rospy.logerr('LIGHT'+str(state))
             self.upcoming_red_light_pub.publish(Int32(light_wp))
         else:
             self.upcoming_red_light_pub.publish(Int32(self.last_wp))
@@ -101,6 +103,15 @@ class TLDetector(object):
 
         """
         #TODO implement
+	if (self.waypoints):
+		pos_x_list = np.asarray([waypoint.pose.pose.position.x for waypoint in self.waypoints.waypoints])
+		pos_y_list = np.asarray([waypoint.pose.pose.position.y for waypoint in self.waypoints.waypoints])
+
+		pts = zip(pos_x_list-pose.position.x, pos_y_list-pose.position.y)
+		pts_arr = np.asarray(pts)
+		d2 = np.sum(pts_arr**2, axis=1)
+		ind_closest = np.argmin(d2)
+		return ind_closest
         return 0
 
     def get_light_state(self, light):
@@ -139,9 +150,31 @@ class TLDetector(object):
             car_position = self.get_closest_waypoint(self.pose.pose)
 
         #TODO find the closest visible traffic light (if one exists)
+	pos_x_list = np.asarray([light.pose.pose.position.x for light in self.lights])
+	pos_y_list = np.asarray([light.pose.pose.position.y for light in self.lights])
+	#rospy.logerr(pos_x_list)
+	#rospy.logerr(self.pose.pose.position.x)
+	pts = zip(pos_x_list-self.pose.pose.position.x, pos_y_list-self.pose.pose.position.y)
+	pts_arr = np.asarray(pts)
+	d2 = np.sum(pts_arr**2, axis=1)
+	#rospy.logerr(pts_arr)
+	ind_closest = np.argmin(d2)
+	
+	#if (wp <= car_position):
+	#  ind_closest = ind_closest+1
+	#rospy.logerr("DIST"+str(d2[ind_closest]))
+	
+	if (d2[ind_closest] < 6000.0):
+	  light = self.lights[ind_closest]
+	  wp = self.get_closest_waypoint(light.pose.pose)
+	  if (wp <= car_position):
+		light = None
+	else:
+	  light = None
 
         if light:
-            state = self.get_light_state(light)
+            state = light.state#self.get_light_state(light)
+	    light_wp = wp
             return light_wp, state
         self.waypoints = None
         return -1, TrafficLight.UNKNOWN
