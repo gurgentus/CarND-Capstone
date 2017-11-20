@@ -23,7 +23,7 @@ as well as to verify your TL classifier.
 TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
-LOOKAHEAD_WPS = 200 #200 # Number of waypoints we will publish. You can change this number
+LOOKAHEAD_WPS = 200 # Number of waypoints we will publish. You can change this number
 
 
 class WaypointUpdater(object):
@@ -32,6 +32,7 @@ class WaypointUpdater(object):
 	self.base_waypoints = None
 	self.cur_x = 0
 	self.cur_y = 0
+	self.max_vel = 0
 
         rospy.init_node('waypoint_updater')
 
@@ -49,7 +50,6 @@ class WaypointUpdater(object):
     def loop(self):
         rate = rospy.Rate(10) # 50Hz
         while not rospy.is_shutdown():
-	  #rospy.logerr("running")
 	  self.update_waypoints()
           rate.sleep()
 
@@ -57,39 +57,30 @@ class WaypointUpdater(object):
         # TODO: Implement
 	self.cur_x = msg.pose.position.x
 	self.cur_y = msg.pose.position.y
-	#rospy.logerr(msg.pose.position.x)
-	#rospy.logerr(msg.pose.position.y)
-	#rospy.logerr(msg.pose.orientation.x)
-	#rospy.logerr(msg.pose.orientation.y)
-	#rospy.logerr(msg.pose.orientation.z)
         pass
 
     def traffic_wp_cb(self, msg):
 	ind =  msg.data
-	#rospy.logerr("INDEX")
-	#rospy.logerr(ind)
-	i = 0
 	if self.waypoints:
 	  for waypoint in self.waypoints.waypoints:
 	    if (ind != -1 and ind < 36 and ind > 18):
 	      waypoint.twist.twist.linear.x = 0.0
 	    elif (ind != -1):
-	      waypoint.twist.twist.linear.x = 3.0
+	      waypoint.twist.twist.linear.x = min(3.0, self.max_vel)
 	    else:
-	      waypoint.twist.twist.linear.x = 15.0
-	    i = i + 1
+	      waypoint.twist.twist.linear.x = min(15.0, self.max_vel)
 	pass
 
     def waypoints_cb(self, msg):
         # TODO: Implement
 	self.base_waypoints = msg.waypoints
 	self.waypoints = msg
+	self.max_vel = self.base_waypoints[0].twist.twist.linear.x
 	for waypoint in self.base_waypoints:
-	  waypoint.twist.twist.linear.x = 15.0
+	  waypoint.twist.twist.linear.x = min(15.0, self.max_vel)
 
 	while (self.cur_x == 0):
 	   test = 1
-	   #rospy.logerr('waiting')
 	self.loop()
         pass
 
@@ -102,7 +93,7 @@ class WaypointUpdater(object):
 	d2 = np.sum(pts_arr**2, axis=1)
 	ind_closest = np.argmin(d2)
 	num_waypoints = len(self.base_waypoints)
-	last_waypoint = ind_closest+LOOKAHEAD_WPS
+	last_waypoint = ind_closest + LOOKAHEAD_WPS
 	final_waypoints = self.base_waypoints[ind_closest:min(last_waypoint, num_waypoints-1)]
 	if (last_waypoint > num_waypoints):
 	  final_waypoints = final_waypoints + self.base_waypoints[0:(last_waypoint%num_waypoints-1)]	  

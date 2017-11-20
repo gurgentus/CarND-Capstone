@@ -12,6 +12,10 @@ class Controller(object):
 	self.steer_pid = PID(0.2, 0.005, 10.0)
         pass
 
+    def reset():
+	self.speed_pid.reset()
+	self.steer_pid.reset()
+
     def control(self, cur_speed, target_speed, cur_angle, target_angle):
         # TODO: Change the arg, kwarg list to suit your needs
         # Return throttle, brake, steer

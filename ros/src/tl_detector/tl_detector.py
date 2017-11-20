@@ -11,6 +11,10 @@ from light_classification.tl_classifier import TLClassifier
 import tf
 import cv2
 import yaml
+from cv_bridge import CvBridge, CvBridgeError
+from PIL import Image as Img
+from datetime import datetime
+import csv
 
 STATE_COUNT_THRESHOLD = 3
 
@@ -18,13 +22,14 @@ class TLDetector(object):
     def __init__(self):
         rospy.init_node('tl_detector')
 
+	self.training = False
+
         self.pose = None
         self.waypoints = None
         self.camera_image = None
         self.lights = []
 
         sub1 = rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
-        #sub2 = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
         sub2 = rospy.Subscriber('/final_waypoints', Lane, self.waypoints_cb)
         '''
         /vehicle/traffic_lights provides you with the location of the traffic light in 3D map space and
@@ -40,6 +45,10 @@ class TLDetector(object):
         self.config = yaml.load(config_string)
 
         self.upcoming_red_light_pub = rospy.Publisher('/traffic_waypoint', Int32, queue_size=1)
+	if (self.training):
+          with open('light_classification/data/log.csv', 'w') as f:
+	    writer = csv.writer(f)
+
 
         self.bridge = CvBridge()
         self.light_classifier = TLClassifier()
@@ -49,6 +58,8 @@ class TLDetector(object):
         self.last_state = TrafficLight.UNKNOWN
         self.last_wp = -1
         self.state_count = 0
+
+	self.light = False
 
         rospy.spin()
 
@@ -86,8 +97,24 @@ class TLDetector(object):
             self.last_state = self.state
             light_wp = light_wp if state == TrafficLight.RED else -1
             self.last_wp = light_wp
-	    #rospy.logerr('LIGHT'+str(state))
             self.upcoming_red_light_pub.publish(Int32(light_wp))
+	    # self image for training purposes
+	    if (self.training and self.light):
+	      try:
+	  	cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "bgr8")
+	      except CvBridgeError as e:
+	  	print(e)
+	      cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
+	      img = Img.fromarray(cv_image, 'RGB')
+	      timestr = datetime.now().strftime("%Y%m%d-%H%M%S%f")
+	      fname = 'light_classification/data/' + timestr + '.png'
+	      fname_short = 'data/' + timestr + '.png'
+	      img.save(fname)
+	      with open('light_classification/data/log.csv', 'a') as f:
+		  writer = csv.writer(f)
+		  writer.writerow([fname_short, state])
+		
+	    
         else:
             self.upcoming_red_light_pub.publish(Int32(self.last_wp))
         self.state_count += 1
@@ -129,7 +156,7 @@ class TLDetector(object):
             return False
 
         cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "bgr8")
-
+	cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2RGB)
         #Get classification
         return self.light_classifier.get_classification(cv_image)
 
@@ -152,28 +179,29 @@ class TLDetector(object):
         #TODO find the closest visible traffic light (if one exists)
 	pos_x_list = np.asarray([light.pose.pose.position.x for light in self.lights])
 	pos_y_list = np.asarray([light.pose.pose.position.y for light in self.lights])
-	#rospy.logerr(pos_x_list)
-	#rospy.logerr(self.pose.pose.position.x)
+
 	pts = zip(pos_x_list-self.pose.pose.position.x, pos_y_list-self.pose.pose.position.y)
 	pts_arr = np.asarray(pts)
 	d2 = np.sum(pts_arr**2, axis=1)
-	#rospy.logerr(pts_arr)
 	ind_closest = np.argmin(d2)
-	
-	#if (wp <= car_position):
-	#  ind_closest = ind_closest+1
-	#rospy.logerr("DIST"+str(d2[ind_closest]))
 	
 	if (d2[ind_closest] < 6000.0):
 	  light = self.lights[ind_closest]
 	  wp = self.get_closest_waypoint(light.pose.pose)
+	  self.light = True
 	  if (wp <= car_position):
 		light = None
+		self.light = False
 	else:
 	  light = None
+	  self.light = False
 
         if light:
-            state = light.state#self.get_light_state(light)
+	    if (self.training):
+	      state = light.state
+	    else:
+              state = self.get_light_state(light)
+
 	    light_wp = wp
             return light_wp, state
         self.waypoints = None
